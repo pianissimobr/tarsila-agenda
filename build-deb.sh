@@ -2,7 +2,12 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PKG_NAME="agenda-tarsila"
-VERSION="${1:-4.0.0}"
+# A versao vem do DEBIAN/control, que e a fonte unica. Escrita a mao aqui
+# tambem, ela vira duas verdades que envelhecem separado: no
+# tarsila-app-management as duas ja tinham divergido, e o pacote saia com um
+# numero no nome e outro por dentro.
+VERSION="${1:-$(sed -n 's/^Version: *//p' "$SCRIPT_DIR/DEBIAN/control" | head -1)}"
+[ -n "$VERSION" ] || { echo "ERRO: sem Version: em DEBIAN/control" >&2; exit 1; }
 DEB="${PKG_NAME}_${VERSION}_all.deb"
 BUILD_DIR="$(mktemp -d)"
 cleanup() { rm -rf "$BUILD_DIR"; }
