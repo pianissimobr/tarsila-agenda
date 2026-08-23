@@ -1,0 +1,6 @@
+#!/bin/sh
+# Shim pro atalho curado do Tarsila OS: o tarsila-abrindo (tarsila-gui) chama
+# "tarsila-agenda" pelo PATH, que resolve pra /usr/local/bin -- convencao
+# igual a do tarsila-email (usr/local/bin/tarsila-email). O binario de
+# verdade e o /usr/bin/agenda-tarsila, que este pacote tambem instala.
+exec /usr/bin/agenda-tarsila "$@"
