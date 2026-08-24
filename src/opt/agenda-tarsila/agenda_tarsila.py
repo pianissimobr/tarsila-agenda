@@ -290,6 +290,42 @@ def _clean_params(params):
     return out
 
 
+def _erro_http(exc):
+    """Traduz um HTTPError do Google num ApiError com mensagem legivel.
+
+    Vive fora do http_call de proposito: era metade do corpo dele, e o
+    caminho feliz -- montar a requisicao, ler, decodificar -- ficava
+    soterrado sob a extracao da mensagem de erro. Aqui a divisao e por
+    assunto: uma funcao faz a chamada, a outra entende a recusa.
+
+    O Google responde erro em dois formatos, e os dois aparecem na pratica:
+      {"error": {"message": ..., "errors": [{"reason": ...}]}}   API
+      {"error": "invalid_grant", "error_description": ...}       OAuth
+    Sem corpo legivel, sobra o codigo HTTP -- que ja diz alguma coisa.
+    """
+    try:
+        raw = exc.read() or b""
+    except Exception:
+        raw = b""
+
+    message = "HTTP %s" % exc.code
+    reason = ""
+    try:
+        payload = json.loads(raw.decode("utf-8", "replace"))
+        err = payload.get("error")
+        if isinstance(err, dict):
+            message = err.get("message") or message
+            detalhes = err.get("errors") or []
+            if detalhes:
+                reason = detalhes[0].get("reason", "")
+        elif isinstance(err, str):
+            reason = err
+            message = payload.get("error_description") or err
+    except Exception:
+        pass
+    return ApiError(message, exc.code, reason)
+
+
 def http_call(method, url, params=None, body=None, headers=None, timeout=40):
     """Requisicao JSON. Levanta ApiError com mensagem legivel."""
     clean = _clean_params(params)
@@ -310,27 +346,7 @@ def http_call(method, url, params=None, body=None, headers=None, timeout=40):
         with urllib.request.urlopen(req, timeout=timeout, context=_SSL) as resp:
             raw = resp.read()
     except urllib.error.HTTPError as exc:
-        raw = b""
-        try:
-            raw = exc.read() or b""
-        except Exception:
-            pass
-        message = "HTTP %s" % exc.code
-        reason = ""
-        try:
-            payload = json.loads(raw.decode("utf-8", "replace"))
-            err = payload.get("error")
-            if isinstance(err, dict):
-                message = err.get("message") or message
-                details = err.get("errors") or []
-                if details:
-                    reason = details[0].get("reason", "")
-            elif isinstance(err, str):
-                reason = err
-                message = payload.get("error_description") or err
-        except Exception:
-            pass
-        raise ApiError(message, exc.code, reason)
+        raise _erro_http(exc)
     except socket.timeout:
         raise ApiError("Tempo esgotado ao contatar o Google.")
     except urllib.error.URLError as exc:
@@ -944,16 +960,6 @@ class Store(object):
             self.db.execute("DELETE FROM sync_links WHERE local_id=?", (ev_id,))
             self.db.commit()
 
-    def get_sync_link(self, local_id):
-        with self.lock:
-            row = self.db.execute(
-                "SELECT * FROM sync_links WHERE local_id=?", (local_id,)).fetchone()
-        if not row:
-            return None
-        return {"google_cal_id": row["google_cal_id"],
-                "google_event_id": row["google_event_id"],
-                "synced_at": row["synced_at"]}
-
     def set_sync_link(self, local_id, google_cal_id, google_event_id):
         with self.lock:
             self.db.execute(
@@ -1328,10 +1334,6 @@ class Controller(object):
 
     def events_visible(self):
         return [e for e in self.events if e.cal_id not in self.hidden]
-
-    def events_of(self, day):
-        return sorted([e for e in self.events_visible() if e.spans(day)],
-                      key=lambda e: e.sort_key())
 
     def writable_calendars(self):
         return [c for c in self.calendars if c["editable"]]
@@ -2625,19 +2627,6 @@ class ConnectGoogleDialog(Gtk.Dialog):
                 "<small>Nenhum credentials.json. Selecione o arquivo ou "
                 "instale em /etc/agenda-tarsila/.</small>")
             self.login_btn.set_sensitive(False)
-
-    def set_busy(self, busy, message=None):
-        if busy:
-            self.spinner.start()
-        else:
-            self.spinner.stop()
-        ready = self.parent_win.plugin.credentials_kind() == "installed"
-        self.login_btn.set_sensitive(not busy and ready)
-        self.pick_btn.set_sensitive(not busy)
-        if message:
-            self.status.set_markup("<small>%s</small>"
-                                   % GLib.markup_escape_text(message))
-
 
 # =============================================================================
 # JANELA PRINCIPAL
