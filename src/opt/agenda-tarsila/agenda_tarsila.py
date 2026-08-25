@@ -26,7 +26,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 APP_NAME = "Agenda Tarsila"
 APP_ID = "agenda-tarsila"
-APP_VERSION = "5.0.0"
+APP_VERSION = "1.0.0"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 GOOGLE_ICON = os.path.join(APP_DIR, "icons", "google-20.png")
 GOOGLE_ICON_FALLBACK = os.path.join(APP_DIR, "icons", "google.png")
